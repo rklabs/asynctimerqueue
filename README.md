@@ -8,18 +8,14 @@ to be run in future. An "event" can be created to run once or repeatedly. AsyncT
 has been implemented as singleton class. The application intending to use AsyncTimer must run
 Timer::AsyncTimer::timerLoop in a separate thread. Below is simple example.
 
-# define asyncTimerObj Timer::AsyncTimer::getAsyncTimer()
-
-int main()
-{
     std::thread asyncthread(&Timer::AsyncTimer::timerLoop,
-                            &asyncTimerObj);
+                            &Timer::AsyncTimer::getAsyncTimer());
 
     foo f;
 
-    int eventId1 = asyncTimerObj.create(1000, true, &handler1);
-    int eventId2 = asyncTimerObj.create(2000, true, &handler2);
-    int eventId3 = asyncTimerObj.create(4000, true, &foo::handler3, &f);
+    int eventId1 = Timer::AsyncTimer::getAsyncTimer().create(1000, true, &handler1);
+    int eventId2 = Timer::AsyncTimer::getAsyncTimer().create(2000, true, &handler2);
+    int eventId3 = Timer::AsyncTimer::getAsyncTimer().create(4000, true, &foo::handler3, &f);
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
@@ -27,8 +23,6 @@ int main()
 
     asyncthread.join();
 
-    return 0;
-}
 
 
 
