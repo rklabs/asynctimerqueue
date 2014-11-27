@@ -30,6 +30,7 @@ class foo {
 
 int main()
 {
+    // Start timer loop
     std::thread asyncthread(&Timer::AsyncTimer::timerLoop,
                             &asyncTimerObj);
 

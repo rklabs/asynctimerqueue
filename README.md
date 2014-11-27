@@ -8,6 +8,8 @@ to be run in future. An "event" can be created to run once or repeatedly. AsyncT
 has been implemented as singleton class. The application intending to use AsyncTimer must run
 Timer::AsyncTimer::timerLoop in a separate thread. Below is simple example.
 
+Handler be signature should be as follows void func(type1 arg1, type2, arg2, ...)
+
     std::thread asyncthread(&Timer::AsyncTimer::timerLoop,
                             &Timer::AsyncTimer::getAsyncTimer());
 
