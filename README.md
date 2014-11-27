@@ -8,7 +8,7 @@ to be run in future. An "event" can be created to run once or repeatedly. AsyncT
 has been implemented as singleton class. The application intending to use AsyncTimer must run
 Timer::AsyncTimer::timerLoop in a separate thread. Below is simple example.
 
-#define asyncTimerObj Timer::AsyncTimer::getAsyncTimer()
+# define asyncTimerObj Timer::AsyncTimer::getAsyncTimer()
 
 int main()
 {
