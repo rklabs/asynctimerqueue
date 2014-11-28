@@ -34,7 +34,6 @@
 namespace Timer {
 
 struct Event {
- public:
     int id_;       // unique id for each event object
     int timeLeft_; // in millisec
     int timeout_;  // in millisec
@@ -92,17 +91,18 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
     std::function<void()> task = func;
 
     // Create new event object
-    {
-        Event event;
-        std::unique_lock<std::mutex> lock(eventQMutex_);
-        event.id_ = std::rand();
-        event.repeat_ = repeat;
-        event.repeatCount_ = 0;
-        event.eventHandler_ = task;
-        event.startTime_ = std::chrono::system_clock::now();
-        event.timeout_ = timeout;
-        event.timeLeft_ = timeout;
+    
+    Event event;
+    event.id_ = std::rand();
+    event.repeat_ = repeat;
+    event.repeatCount_ = 0;
+    event.eventHandler_ = task;
+    event.startTime_ = std::chrono::system_clock::now();
+    event.timeout_ = timeout;
+    event.timeLeft_ = timeout;
 
+    {    
+        std::unique_lock<std::mutex> lock(eventQMutex_);
         eventQ_.push_back(event);
 
         // The timer loop may already be waiting for longer
@@ -146,7 +146,9 @@ AsyncTimer::timerLoop() {
             // new event gets added to eventQ_ with lesser value
             std::unique_lock<std::mutex> lock(eventQMutex_);
             eventQCond_.wait_until(lock,
-                                   std::chrono::system_clock::now() + std::chrono::milliseconds(eventQ_.back().timeLeft_), [this] { return this->stopThread_ ||
+                                   std::chrono::system_clock::now() + 
+                                   std::chrono::milliseconds(eventQ_.back().timeLeft_), 
+                                   [this] { return this->stopThread_ ||
                                             this->fallThrough_; });
 
             auto currTime = std::chrono::system_clock::now();
