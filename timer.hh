@@ -30,6 +30,7 @@
 #include <functional>
 #include <mutex>
 #include <condition_variable>
+#include <memory>
 
 namespace Timer {
 
@@ -44,6 +45,8 @@ struct Event {
     // event handler callback
     std::function<void()> eventHandler_;
 };
+
+typedef std::shared_ptr<Event> EventPtr;
 
 class AsyncTimer {
  public:
@@ -64,7 +67,7 @@ class AsyncTimer {
     AsyncTimer & operator=(const AsyncTimer &)=delete;
     AsyncTimer & operator=(AsyncTimer &&)=delete;
  private:
-    std::deque<Event> eventQ_;
+    std::deque<EventPtr> eventQ_;
 
     std::mutex eventQMutex_;
     std::condition_variable eventQCond_;
@@ -91,17 +94,16 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
     std::function<void()> task = func;
 
     // Create new event object
-    
-    Event event;
-    event.id_ = std::rand();
-    event.repeat_ = repeat;
-    event.repeatCount_ = 0;
-    event.eventHandler_ = task;
-    event.startTime_ = std::chrono::system_clock::now();
-    event.timeout_ = timeout;
-    event.timeLeft_ = timeout;
+    auto event = EventPtr(new Event());
+    event->id_ = std::rand();
+    event->repeat_ = repeat;
+    event->repeatCount_ = 0;
+    event->eventHandler_ = task;
+    event->startTime_ = std::chrono::system_clock::now();
+    event->timeout_ = timeout;
+    event->timeLeft_ = timeout;
 
-    {    
+    {
         std::unique_lock<std::mutex> lock(eventQMutex_);
         eventQ_.push_back(event);
 
@@ -109,7 +111,7 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
         // timeout value. If new event with lesser timeout
         // gets added to eventQ_ its necessary to notify
         // the conditional variable and fall through
-        if (event.timeLeft_ < eventQ_.back().timeLeft_) {
+        if (event->timeLeft_ < eventQ_.back()->timeLeft_) {
             fallThrough_ = true;
         }
 
@@ -117,13 +119,14 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
         // the event with least timeout value is always triggered first
         std::sort(eventQ_.begin(),
                   eventQ_.end(),
-                  [](Event e1, Event e2) {
-                     return e1.timeLeft_ > e2.timeLeft_; });
-
-        emptyQCond_.notify_one();
-
-        return event.id_;
+                  [](EventPtr(e1), EventPtr(e2)) {
+                     return e1->timeLeft_ > e2->timeLeft_; });
     }
+
+    // Notify timer loop thread to process event
+    emptyQCond_.notify_one();
+
+    return event->id_;
 }
 
 int
@@ -146,8 +149,8 @@ AsyncTimer::timerLoop() {
             // new event gets added to eventQ_ with lesser value
             std::unique_lock<std::mutex> lock(eventQMutex_);
             eventQCond_.wait_until(lock,
-                                   std::chrono::system_clock::now() + 
-                                   std::chrono::milliseconds(eventQ_.back().timeLeft_), 
+                                   std::chrono::system_clock::now() +
+                                   std::chrono::milliseconds(eventQ_.back()->timeLeft_),
                                    [this] { return this->stopThread_ ||
                                             this->fallThrough_; });
 
@@ -157,27 +160,27 @@ AsyncTimer::timerLoop() {
 
                 auto elapsedTime = \
                 std::chrono::duration_cast<std::chrono::milliseconds>(
-                    currTime - iter->startTime_).count();
+                    currTime - (*iter)->startTime_).count();
 
                     // Update time left with time spent since start of event
-                    iter->timeLeft_ -= elapsedTime;
+                    (*iter)->timeLeft_ -= elapsedTime;
 
                     // If there's no time left then fire event handler
-                    if (iter->timeLeft_ <= 0) {
-                        std::thread(iter->eventHandler_).detach();
+                    if ((*iter)->timeLeft_ <= 0) {
+                        std::thread((*iter)->eventHandler_).detach();
                         // If timer has to be repeated reset
                         // startTime_ and timeLeft_
-                        if (iter->repeat_) {
-                            iter->startTime_ = currTime;
-                            iter->timeLeft_ = iter->timeout_;
-                            iter->repeatCount_++;
+                        if ((*iter)->repeat_) {
+                            (*iter)->startTime_ = currTime;
+                            (*iter)->timeLeft_ = (*iter)->timeout_;
+                            (*iter)->repeatCount_++;
                             ++iter;
                             continue;
                         } else {
                             iter = eventQ_.erase(iter);
                         }
                     } else {
-                        iter->startTime_ = currTime;
+                        (*iter)->startTime_ = currTime;
                         ++iter;
                     }
             }
@@ -186,8 +189,8 @@ AsyncTimer::timerLoop() {
             // timeLeft_ is always at back of the queue
             std::sort(eventQ_.begin(),
                       eventQ_.end(),
-                      [](Event e1, Event e2) {
-                         return e1.timeLeft_ > e2.timeLeft_; });
+                      [](EventPtr(e1), EventPtr(e2)) {
+                         return e1->timeLeft_ > e2->timeLeft_; });
         }
     }
 }
@@ -197,7 +200,7 @@ AsyncTimer::cancel(int id) {
     std::unique_lock<std::mutex> lock(eventQMutex_);
     auto event = std::find_if(eventQ_.begin(),
                               eventQ_.end(),
-                              [&](Event e1) { return e1.id_ == id; });
+                              [&](EventPtr e1) { return e1->id_ == id; });
 
     if (event != eventQ_.end()) {
         eventQ_.erase(event);
