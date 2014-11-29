@@ -36,8 +36,8 @@ int main()
 
     foo f;
 
-    int eventId1 = asyncTimerObj.create(1000, true, &handler1);
-    int eventId2 = asyncTimerObj.create(2000, true, &handler2);
+    int eventId1 = asyncTimerObj.create(5000, true, &handler1);
+    int eventId2 = asyncTimerObj.create(1000, true, &handler2);
     int eventId3 = asyncTimerObj.create(4000, true, &foo::handler3, &f);
 
     std::this_thread::sleep_for(std::chrono::seconds(2));

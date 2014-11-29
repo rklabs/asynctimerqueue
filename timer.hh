@@ -114,13 +114,6 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
         if (event->timeLeft_ < eventQ_.back()->timeLeft_) {
             fallThrough_ = true;
         }
-
-        // Sort event queue based on timeout. This is to ensure that
-        // the event with least timeout value is always triggered first
-        std::sort(eventQ_.begin(),
-                  eventQ_.end(),
-                  [](EventPtr(e1), EventPtr(e2)) {
-                     return e1->timeLeft_ > e2->timeLeft_; });
     }
 
     // Notify timer loop thread to process event
