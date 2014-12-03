@@ -31,17 +31,15 @@
 #include <mutex>
 #include <condition_variable>
 #include <memory>
+#include <unordered_map>
 
 namespace Timer {
 
 struct Event {
     int id_;       // unique id for each event object
-    int timeLeft_; // in millisec
     int timeout_;  // in millisec
-    bool repeat_;  // repeat event indefinitely
-    int repeatCount_;
-    // timestamp of event creation
-    std::chrono::time_point<std::chrono::system_clock> startTime_;
+    bool repeat_;  // repeat event indefinitely if true
+    int nextRun_;
     // event handler callback
     std::function<void()> eventHandler_;
 };
@@ -67,8 +65,6 @@ class AsyncTimer {
     AsyncTimer & operator=(const AsyncTimer &)=delete;
     AsyncTimer & operator=(AsyncTimer &&)=delete;
  private:
-    std::deque<EventPtr> eventQ_;
-
     std::mutex eventQMutex_;
     std::condition_variable eventQCond_;
 
@@ -76,16 +72,46 @@ class AsyncTimer {
     std::condition_variable emptyQCond_;
     bool stopThread_;
     bool fallThrough_;
+    int currMin_;
+    int nextId_;
+    std::chrono::time_point<std::chrono::system_clock> startTime_;
+
+    std::unordered_map<int, std::vector<EventPtr>> eventMap_;
 };
 
-AsyncTimer::AsyncTimer() : stopThread_(false), fallThrough_(false) {
-    // Set random seed to ensure truely random numbers
-    std::srand(std::time(0));
+typedef std::pair<int, std::vector<EventPtr>> EventMapPair;
+struct CompareTimeout
+{
+    bool operator()(const EventMapPair & left,
+                    const EventMapPair & right) const
+    {
+        return left.second[0]->timeout_ < right.second[0]->timeout_;
+    }
+};
+
+
+typedef std::pair<int, std::vector<EventPtr>> EventMapPair;
+struct CompareNextRun
+{
+    bool operator()(const EventMapPair & left,
+                    const EventMapPair & right) const
+    {
+        return left.second[0]->nextRun_ < right.second[0]->nextRun_;
+    }
+};
+
+AsyncTimer::AsyncTimer() : stopThread_(false),
+                           fallThrough_(false),
+                           currMin_(0),
+                           nextId_(1),
+                           startTime_(std::chrono::system_clock::now()) {
 }
 
 template<class F, class... Args>
 int
 AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
+
+    int prevMinTimeout;
 
     // Define generic funtion with any number / type of args
     // and return type, make it callable without args(void func())
@@ -95,24 +121,42 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
 
     // Create new event object
     auto event = EventPtr(new Event());
-    event->id_ = std::rand();
+    event->id_ = nextId_++;
     event->repeat_ = repeat;
-    event->repeatCount_ = 0;
     event->eventHandler_ = task;
-    event->startTime_ = std::chrono::system_clock::now();
     event->timeout_ = timeout;
-    event->timeLeft_ = timeout;
+    event->nextRun_ = timeout;
 
     {
         std::unique_lock<std::mutex> lock(eventQMutex_);
-        eventQ_.push_back(event);
 
-        // The timer loop may already be waiting for longer
-        // timeout value. If new event with lesser timeout
-        // gets added to eventQ_ its necessary to notify
-        // the conditional variable and fall through
-        if (event->timeLeft_ < eventQ_.back()->timeLeft_) {
-            fallThrough_ = true;
+        // Save previous timeout value to ensure fall through
+        // incase 'this' timeout is lesser than previous timeout
+        prevMinTimeout = currMin_;
+
+        // Chain events with same timeout value
+        eventMap_[timeout].push_back(event);
+
+        // For first run trigger wait asap else find min
+        // timeout value and wait till it expires or event
+        // with lesser timeout is queued
+        if (!currMin_) {
+            currMin_ = timeout;
+        } else {
+            auto minElem = std::min_element(eventMap_.begin(),
+                                            eventMap_.end(),
+                                            CompareTimeout());
+
+            currMin_ = (*minElem).second[0]->timeout_;
+
+            // The timer loop may already be waiting for longer
+            // timeout value. If new event with lesser timeout
+            // gets added to eventMap_ its necessary to notify
+            // the conditional variable and fall through
+            if (timeout < prevMinTimeout) {
+                fallThrough_ = true;
+
+            }
         }
     }
 
@@ -124,12 +168,14 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
 
 int
 AsyncTimer::timerLoop() {
+    int waitTime = -1;
+
     while (true) {
         // Block till queue is empty
         {
             std::unique_lock<std::mutex> lock(emptyQMutex_);
             emptyQCond_.wait(lock, [this]{ return this->stopThread_ ||
-                                           !this->eventQ_.empty(); });
+                                           !this->eventMap_.empty(); });
         }
 
         if (stopThread_) {
@@ -137,53 +183,80 @@ AsyncTimer::timerLoop() {
             return 0;
         }
 
-        if (!eventQ_.empty()) {
-            // Block till least timeout value in eventQ_ is expired or
-            // new event gets added to eventQ_ with lesser value
+        if (!eventMap_.empty()) {
+            // Block till least timeout value in eventMap_ is expired or
+            // new event gets added to eventMap_ with lesser value
             std::unique_lock<std::mutex> lock(eventQMutex_);
+
+            // XXX Ocasionally below wait doesn't fall through
+            // immediately even though timer loop thread has
+            // already been started. Looks like notify doesn't
+            // reach the thread. Is this bug in STL ?
             eventQCond_.wait_until(lock,
-                                   std::chrono::system_clock::now() +
-                                   std::chrono::milliseconds(eventQ_.back()->timeLeft_),
-                                   [this] { return this->stopThread_ ||
-                                            this->fallThrough_; });
+                                    std::chrono::system_clock::now() +
+                                    std::chrono::milliseconds(waitTime == -1 ?
+                                                              currMin_ : waitTime),
+                                    [this] { return this->stopThread_ ||
+                                             this->fallThrough_; });
+
+            // Enough time may not have been spent in case of
+            // fall through. So calculate diff and wait for
+            // some more time
+            if (fallThrough_) {
+                // Find time spent
+                auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now() - startTime_).count();
+
+                waitTime = currMin_ - diff;
+
+                if (waitTime > 0) {
+                    continue;
+                } else {
+                    // Reset fallThrough_
+                    fallThrough_ = false;
+                }
+            }
 
             auto currTime = std::chrono::system_clock::now();
 
-            for (auto iter = eventQ_.begin() ; iter != eventQ_.end();) {
+            auto elapsedTime = \
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                currTime - startTime_).count();
 
-                auto elapsedTime = \
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    currTime - (*iter)->startTime_).count();
+            // Trigger all events in event chain
+            for (auto iter = eventMap_[currMin_].begin() ;
+                 iter != eventMap_[currMin_].end() ;) {
 
-                    // Update time left with time spent since start of event
-                    (*iter)->timeLeft_ -= elapsedTime;
+                std::thread((*iter)->eventHandler_).detach();
 
-                    // If there's no time left then fire event handler
-                    if ((*iter)->timeLeft_ <= 0) {
-                        std::thread((*iter)->eventHandler_).detach();
-                        // If timer has to be repeated reset
-                        // startTime_ and timeLeft_
-                        if ((*iter)->repeat_) {
-                            (*iter)->startTime_ = currTime;
-                            (*iter)->timeLeft_ = (*iter)->timeout_;
-                            (*iter)->repeatCount_++;
-                            ++iter;
-                            continue;
-                        } else {
-                            iter = eventQ_.erase(iter);
-                        }
-                    } else {
-                        (*iter)->startTime_ = currTime;
-                        ++iter;
-                    }
+                // If event has to be run once then delete
+                // from vector else increment nextRun_ which
+                // will be compared below to get next event
+                // to be run
+                if (!(*iter)->repeat_) {
+                    iter = eventMap_[currMin_].erase(iter);
+                    continue;
+                } else {
+                    (*iter)->nextRun_ = elapsedTime + (*iter)->timeout_;
+                }
+                ++iter;
             }
 
-            // Sort once again to ensure event with shortest
-            // timeLeft_ is always at back of the queue
-            std::sort(eventQ_.begin(),
-                      eventQ_.end(),
-                      [](EventPtr(e1), EventPtr(e2)) {
-                         return e1->timeLeft_ > e2->timeLeft_; });
+            // If current bucket is empty erase it
+            if (eventMap_[currMin_].empty()) {
+                eventMap_.erase(currMin_);
+            }
+
+            // Get next event chain to be run
+            auto elem = std::min_element(eventMap_.begin(),
+                                         eventMap_.end(),
+                                         CompareNextRun());
+            waitTime = (*elem).second[0]->nextRun_ - elapsedTime;
+            if (waitTime < 0) {
+                waitTime = 0;
+            }
+            // Next event chain to be run
+            currMin_ = (*elem).second[0]->timeout_;
         }
     }
 }
@@ -191,12 +264,12 @@ AsyncTimer::timerLoop() {
 inline int
 AsyncTimer::cancel(int id) {
     std::unique_lock<std::mutex> lock(eventQMutex_);
-    auto event = std::find_if(eventQ_.begin(),
-                              eventQ_.end(),
-                              [&](EventPtr e1) { return e1->id_ == id; });
+    auto event = std::find_if(eventMap_.begin(),
+                              eventMap_.end(),
+                              [&](EventMapPair e1) { return e1.first == id; });
 
-    if (event != eventQ_.end()) {
-        eventQ_.erase(event);
+    if (event != eventMap_.end()) {
+        eventMap_.erase((*event).first);
         return 0;
     }
 
