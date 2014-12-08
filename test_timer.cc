@@ -26,12 +26,12 @@ class foo {
     }
 };
 
-#define asyncTimerObj Timer::AsyncTimer::getAsyncTimer()
+#define asyncTimerObj Timer::AsyncTimerQueue::getAsyncTimerQueue()
 
 int main()
 {
     // Start timer loop
-    std::thread asyncthread(&Timer::AsyncTimer::timerLoop,
+    std::thread asyncthread(&Timer::AsyncTimerQueue::timerLoop,
                             &asyncTimerObj);
 
     foo f;

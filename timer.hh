@@ -44,24 +44,24 @@ struct Event {
 
 typedef std::shared_ptr<Event> EventPtr;
 
-class AsyncTimer {
+class AsyncTimerQueue {
  public:
-    AsyncTimer();
-    ~AsyncTimer();
+    AsyncTimerQueue();
+    ~AsyncTimerQueue();
 
     template<class F, class... Args>
     int create(int timeout, bool repeat, F&& f, Args&&... args);
     int cancel(int id);
 
-    static AsyncTimer & getAsyncTimer();
+    static AsyncTimerQueue & getAsyncTimerQueue();
     int timerLoop();
     void shutdown();
 
     // Delete all constructors since this is singleton pattern
-    AsyncTimer(const AsyncTimer &)=delete;
-    AsyncTimer(AsyncTimer &&)=delete;
-    AsyncTimer & operator=(const AsyncTimer &)=delete;
-    AsyncTimer & operator=(AsyncTimer &&)=delete;
+    AsyncTimerQueue(const AsyncTimerQueue &)=delete;
+    AsyncTimerQueue(AsyncTimerQueue &&)=delete;
+    AsyncTimerQueue & operator=(const AsyncTimerQueue &)=delete;
+    AsyncTimerQueue & operator=(AsyncTimerQueue &&)=delete;
  private:
     std::mutex eventQMutex_;
     std::condition_variable eventQCond_;
@@ -101,7 +101,7 @@ struct CompareNextRun
     }
 };
 
-AsyncTimer::AsyncTimer() : stopThread_(false),
+AsyncTimerQueue::AsyncTimerQueue() : stopThread_(false),
                            fallThrough_(false),
                            currMin_(0),
                            waitTime_(0),
@@ -111,7 +111,7 @@ AsyncTimer::AsyncTimer() : stopThread_(false),
 
 template<class F, class... Args>
 int
-AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
+AsyncTimerQueue::create(int timeout, bool repeat, F&& f, Args&&... args) {
 
     int prevMinTimeout;
 
@@ -171,7 +171,7 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
 }
 
 int
-AsyncTimer::timerLoop() {
+AsyncTimerQueue::timerLoop() {
 
     while (true) {
         // Block till queue is empty
@@ -264,7 +264,7 @@ AsyncTimer::timerLoop() {
 }
 
 inline int
-AsyncTimer::cancel(int id) {
+AsyncTimerQueue::cancel(int id) {
     std::unique_lock<std::mutex> lock(eventQMutex_);
     auto event = std::find_if(eventMap_.begin(),
                               eventMap_.end(),
@@ -278,20 +278,20 @@ AsyncTimer::cancel(int id) {
     return -1;
 }
 
-inline AsyncTimer &
-AsyncTimer::getAsyncTimer() {
-    static AsyncTimer asyncTimer;
+inline AsyncTimerQueue &
+AsyncTimerQueue::getAsyncTimerQueue() {
+    static AsyncTimerQueue asyncTimer;
     return asyncTimer;
 }
 
 inline void
-AsyncTimer::shutdown() {
+AsyncTimerQueue::shutdown() {
     stopThread_ = true;
     eventQCond_.notify_all();
     emptyQCond_.notify_all();
 }
 
-AsyncTimer::~AsyncTimer() {
+AsyncTimerQueue::~AsyncTimerQueue() {
     if (!stopThread_) {
         stopThread_ = true;
         eventQCond_.notify_all();
