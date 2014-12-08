@@ -1,4 +1,3 @@
-/* -*- Mode: C; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
 /*
  * Copyright (C) 2014 Raju Kadam <rajulkadam@gmail.com>
  *
@@ -15,7 +14,6 @@
  * You should have received a copy of the GNU General Public License along
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-// g++ -std=c++11 test_timer.cc -pthread -Wl,--no-as-needed -o test
 
 #pragma once
 
@@ -70,10 +68,13 @@ class AsyncTimer {
 
     std::mutex emptyQMutex_;
     std::condition_variable emptyQCond_;
+
     bool stopThread_;
     bool fallThrough_;
     int currMin_;
+    int waitTime_;
     int nextId_;
+
     std::chrono::time_point<std::chrono::system_clock> startTime_;
 
     std::unordered_map<int, std::vector<EventPtr>> eventMap_;
@@ -103,6 +104,7 @@ struct CompareNextRun
 AsyncTimer::AsyncTimer() : stopThread_(false),
                            fallThrough_(false),
                            currMin_(0),
+                           waitTime_(0),
                            nextId_(1),
                            startTime_(std::chrono::system_clock::now()) {
 }
@@ -160,6 +162,8 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
         }
     }
 
+    waitTime_ = currMin_;
+
     // Notify timer loop thread to process event
     emptyQCond_.notify_one();
 
@@ -168,7 +172,6 @@ AsyncTimer::create(int timeout, bool repeat, F&& f, Args&&... args) {
 
 int
 AsyncTimer::timerLoop() {
-    int waitTime = -1;
 
     while (true) {
         // Block till queue is empty
@@ -194,8 +197,7 @@ AsyncTimer::timerLoop() {
             // reach the thread. Is this bug in STL ?
             eventQCond_.wait_until(lock,
                                     std::chrono::system_clock::now() +
-                                    std::chrono::milliseconds(waitTime == -1 ?
-                                                              currMin_ : waitTime),
+                                    std::chrono::milliseconds(waitTime_),
                                     [this] { return this->stopThread_ ||
                                              this->fallThrough_; });
 
@@ -207,9 +209,9 @@ AsyncTimer::timerLoop() {
                 auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::system_clock::now() - startTime_).count();
 
-                waitTime = currMin_ - diff;
+                waitTime_ = currMin_ - diff;
 
-                if (waitTime > 0) {
+                if (waitTime_ > 0) {
                     continue;
                 } else {
                     // Reset fallThrough_
@@ -251,9 +253,9 @@ AsyncTimer::timerLoop() {
             auto elem = std::min_element(eventMap_.begin(),
                                          eventMap_.end(),
                                          CompareNextRun());
-            waitTime = (*elem).second[0]->nextRun_ - elapsedTime;
-            if (waitTime < 0) {
-                waitTime = 0;
+            waitTime_ = (*elem).second[0]->nextRun_ - elapsedTime;
+            if (waitTime_ < 0) {
+                waitTime_ = 0;
             }
             // Next event chain to be run
             currMin_ = (*elem).second[0]->timeout_;
