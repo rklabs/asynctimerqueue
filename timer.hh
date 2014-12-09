@@ -233,9 +233,11 @@ AsyncTimerQueue::timerLoop() {
             auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::system_clock::now() - startTime_).count();
 
+            auto & eventVector = eventMap_[currMin_];
+            
             // Trigger all events in event chain
-            for (auto iter = eventMap_[currMin_].begin() ;
-                 iter != eventMap_[currMin_].end() ;) {
+            for (auto iter = eventVector.begin() ;
+                 iter != eventVector.end() ;) {
 
                 std::thread((*iter).eventHandler_).detach();
 
@@ -244,7 +246,7 @@ AsyncTimerQueue::timerLoop() {
                 // will be compared below to get next event
                 // to be run
                 if (!(*iter).repeat_) {
-                    iter = eventMap_[currMin_].erase(iter);
+                    iter = eventVector.erase(iter);
                     continue;
                 } else {
                     // XXX overflow
@@ -254,7 +256,7 @@ AsyncTimerQueue::timerLoop() {
             }
 
             // If current bucket is empty erase it
-            if (eventMap_[currMin_].empty()) {
+            if (eventVector.empty()) {
                 eventMap_.erase(currMin_);
             }
 
