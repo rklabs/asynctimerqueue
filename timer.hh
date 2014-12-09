@@ -64,6 +64,7 @@ class AsyncTimerQueue {
     template<class F, class... Args>
     int create(int timeout, bool repeat, F&& f, Args&&... args);
     int cancel(int id);
+    int cancel(int id, int timeout);
 
     static AsyncTimerQueue & getAsyncTimerQueue();
     int timerLoop();
@@ -222,6 +223,7 @@ AsyncTimerQueue::timerLoop() {
                 waitTime_ = currMin_ - diff;
 
                 if (waitTime_ > 0) {
+                    // XXX will block thread, multiple fallThrough_
                     std::this_thread::sleep_for(std::chrono::milliseconds(waitTime_));
                 }
                 // Reset fallThrough_
@@ -245,6 +247,7 @@ AsyncTimerQueue::timerLoop() {
                     iter = eventMap_[currMin_].erase(iter);
                     continue;
                 } else {
+                    // XXX overflow
                     (*iter).nextRun_ = elapsedTime + (*iter).timeout_;
                 }
                 ++iter;
@@ -293,6 +296,29 @@ AsyncTimerQueue::cancel(int id) {
 
             return 0;
         }
+    }
+
+    return -1;
+}
+
+inline int
+AsyncTimerQueue::cancel(int id, int timeout) {
+    std::unique_lock<std::mutex> lock(eventQMutex_);
+
+    auto event = eventMap_.find(timeout);
+
+    if (event != eventMap_.end()) {
+        auto eventVector = eventMap_[timeout];
+        eventVector.erase(std::find_if(eventVector.begin(),
+                                       eventVector.end(),
+                                       [=] (Event & e) { return e.id_ == id; }));
+
+        std::cout << "Event with id " << id << " deleted succesfully\n";
+
+        if (eventVector.empty()) {
+            eventMap_.erase(timeout);
+        }
+        return 0;
     }
 
     return -1;

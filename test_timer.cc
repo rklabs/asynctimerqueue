@@ -40,8 +40,12 @@ int main()
     int eventId2 = asyncTimerObj.create(3000, true, &handler2);
     int eventId3 = asyncTimerObj.create(1000, true, &foo::handler3, &f);
 
-    
+
     if (asyncTimerObj.cancel(eventId1) == -1) {
+        std::cout << "failed to cancel id" << std::endl;
+    }
+
+    if (asyncTimerObj.cancel(eventId2, 3000) == -1) {
         std::cout << "failed to cancel id" << std::endl;
     }
 
