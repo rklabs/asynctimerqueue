@@ -274,13 +274,14 @@ AsyncTimerQueue::cancel(int id) {
     std::unique_lock<std::mutex> lock(eventQMutex_);
 
     for (auto & eventPair : eventMap_) {
+        auto eventVector = eventPair.second;
         // Search for event with matching id in current pair
-        auto event = std::find_if(eventPair.second.begin(),
-                                  eventPair.second.end(),
+        auto event = std::find_if(eventVector.begin(),
+                                  eventVector.end(),
                                   [=] (Event & e) { return e.id_ == id; });
 
         // If found erase event from vector
-        if (event != eventPair.second.end()) {
+        if (event != eventVector.end()) {
             auto key = eventPair.first;
             eventMap_[key].erase(event);
             std::cout << "Event with id " << id << " deleted succesfully\n";
