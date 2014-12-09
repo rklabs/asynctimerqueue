@@ -167,7 +167,6 @@ AsyncTimerQueue::create(int timeout, bool repeat, F&& f, Args&&... args) {
             // the conditional variable and fall through
             if (timeout < prevMinTimeout) {
                 fallThrough_ = true;
-
             }
         }
 
@@ -234,10 +233,9 @@ AsyncTimerQueue::timerLoop() {
                                std::chrono::system_clock::now() - startTime_).count();
 
             auto & eventVector = eventMap_[currMin_];
-            
+
             // Trigger all events in event chain
-            for (auto iter = eventVector.begin() ;
-                 iter != eventVector.end() ;) {
+            for (auto iter = eventVector.begin() ; iter != eventVector.end() ;) {
 
                 std::thread((*iter).eventHandler_).detach();
 
