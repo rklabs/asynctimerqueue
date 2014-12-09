@@ -24,7 +24,7 @@
 #include <chrono>
 #include <future>
 #include <deque>
-#include <algorithm>  // std::sort
+#include <algorithm>  // std::find_if, std::min_element
 #include <functional>
 #include <mutex>
 #include <condition_variable>
@@ -33,15 +33,25 @@
 
 namespace Timer {
 
+typedef std::function<void ()> voidFunc;
+
 struct Event {
     int id_;       // unique id for each event object
     int timeout_;  // in millisec
-    bool repeat_;  // repeat event indefinitely if true
     int nextRun_;
+    bool repeat_;  // repeat event indefinitely if true
     // event handler callback
-    std::function<void()> eventHandler_;
-    Event(int id, int timeout, bool repeat, int nextRun, std::function<void ()> eventHandler) :
-    id_(id), timeout_(timeout), repeat_(repeat), nextRun_(nextRun), eventHandler_(eventHandler) {
+    voidFunc eventHandler_;
+    Event(int id,
+          int timeout,
+          int nextRun,
+          bool repeat,
+          voidFunc eventHandler) :
+            id_(id),
+            timeout_(timeout),
+            nextRun_(nextRun),
+            repeat_(repeat),
+            eventHandler_(eventHandler) {
 
     }
 };
@@ -83,6 +93,7 @@ class AsyncTimerQueue {
 };
 
 typedef std::pair<int, std::vector<Event>> EventMapPair;
+
 struct CompareTimeout
 {
     bool operator()(const EventMapPair & left,
@@ -104,11 +115,12 @@ struct CompareNextRun
 };
 
 AsyncTimerQueue::AsyncTimerQueue() : stopThread_(false),
-                           fallThrough_(false),
-                           currMin_(0),
-                           waitTime_(0),
-                           nextId_(1),
-                           startTime_(std::chrono::system_clock::now()) {
+    fallThrough_(false),
+    currMin_(0),
+    waitTime_(0),
+    nextId_(1),
+    startTime_(std::chrono::system_clock::now()) {
+
 }
 
 template<class F, class... Args>
@@ -134,7 +146,7 @@ AsyncTimerQueue::create(int timeout, bool repeat, F&& f, Args&&... args) {
         prevMinTimeout = currMin_;
 
         // Chain events with same timeout value
-        eventMap_[timeout].emplace_back(std::move(Event(id, timeout, repeat, timeout, task)));
+        eventMap_[timeout].emplace_back(std::move(Event(id, timeout, timeout, repeat, task)));
 
         // For first run trigger wait asap else find min
         // timeout value and wait till it expires or event
@@ -261,20 +273,21 @@ inline int
 AsyncTimerQueue::cancel(int id) {
     std::unique_lock<std::mutex> lock(eventQMutex_);
 
-    for (auto & pair : eventMap_) {
+    for (auto & eventPair : eventMap_) {
         // Search for event with matching id in current pair
-        auto event = std::find_if(pair.second.begin(),
-                                  pair.second.end(),
+        auto event = std::find_if(eventPair.second.begin(),
+                                  eventPair.second.end(),
                                   [=] (Event & e) { return e.id_ == id; });
 
         // If found erase event from vector
-        if (event != pair.second.end()) {
-            eventMap_[pair.first].erase(event);
+        if (event != eventPair.second.end()) {
+            auto key = eventPair.first;
+            eventMap_[key].erase(event);
             std::cout << "Event with id " << id << " deleted succesfully\n";
 
             // Delete key if value is empty
-            if (eventMap_[pair.first].empty()) {
-                eventMap_.erase(pair.first);
+            if (eventMap_[key].empty()) {
+                eventMap_.erase(key);
             }
 
             return 0;
