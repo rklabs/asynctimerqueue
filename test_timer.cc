@@ -40,7 +40,10 @@ int main()
     int eventId2 = asyncTimerObj.create(3000, true, &handler2);
     int eventId3 = asyncTimerObj.create(1000, true, &foo::handler3, &f);
 
-    asyncTimerObj.cancel(eventId1);
+    
+    if (asyncTimerObj.cancel(eventId1) == -1) {
+        std::cout << "failed to cancel id" << std::endl;
+    }
 
     asyncthread.join();
 

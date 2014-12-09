@@ -40,9 +40,11 @@ struct Event {
     int nextRun_;
     // event handler callback
     std::function<void()> eventHandler_;
-};
+    Event(int id, int timeout, bool repeat, int nextRun, std::function<void ()> eventHandler) :
+    id_(id), timeout_(timeout), repeat_(repeat), nextRun_(nextRun), eventHandler_(eventHandler) {
 
-typedef std::shared_ptr<Event> EventPtr;
+    }
+};
 
 class AsyncTimerQueue {
  public:
@@ -77,27 +79,27 @@ class AsyncTimerQueue {
 
     std::chrono::time_point<std::chrono::system_clock> startTime_;
 
-    std::unordered_map<int, std::vector<EventPtr>> eventMap_;
+    std::unordered_map<int, std::vector<Event>> eventMap_;
 };
 
-typedef std::pair<int, std::vector<EventPtr>> EventMapPair;
+typedef std::pair<int, std::vector<Event>> EventMapPair;
 struct CompareTimeout
 {
     bool operator()(const EventMapPair & left,
                     const EventMapPair & right) const
     {
-        return left.second[0]->timeout_ < right.second[0]->timeout_;
+        return left.second[0].timeout_ < right.second[0].timeout_;
     }
 };
 
 
-typedef std::pair<int, std::vector<EventPtr>> EventMapPair;
+typedef std::pair<int, std::vector<Event>> EventMapPair;
 struct CompareNextRun
 {
     bool operator()(const EventMapPair & left,
                     const EventMapPair & right) const
     {
-        return left.second[0]->nextRun_ < right.second[0]->nextRun_;
+        return left.second[0].nextRun_ < right.second[0].nextRun_;
     }
 };
 
@@ -122,22 +124,17 @@ AsyncTimerQueue::create(int timeout, bool repeat, F&& f, Args&&... args) {
     std::function<void()> task = func;
 
     // Create new event object
-    auto event = EventPtr(new Event());
-    event->id_ = nextId_++;
-    event->repeat_ = repeat;
-    event->eventHandler_ = task;
-    event->timeout_ = timeout;
-    event->nextRun_ = timeout;
-
     {
         std::unique_lock<std::mutex> lock(eventQMutex_);
+
+        auto id = nextId_++;
 
         // Save previous timeout value to ensure fall through
         // incase 'this' timeout is lesser than previous timeout
         prevMinTimeout = currMin_;
 
         // Chain events with same timeout value
-        eventMap_[timeout].push_back(event);
+        eventMap_[timeout].emplace_back(std::move(Event(id, timeout, repeat, timeout, task)));
 
         // For first run trigger wait asap else find min
         // timeout value and wait till it expires or event
@@ -149,7 +146,7 @@ AsyncTimerQueue::create(int timeout, bool repeat, F&& f, Args&&... args) {
                                             eventMap_.end(),
                                             CompareTimeout());
 
-            currMin_ = (*minElem).second[0]->timeout_;
+            currMin_ = (*minElem).second[0].timeout_;
 
             // The timer loop may already be waiting for longer
             // timeout value. If new event with lesser timeout
@@ -160,14 +157,14 @@ AsyncTimerQueue::create(int timeout, bool repeat, F&& f, Args&&... args) {
 
             }
         }
+
+        waitTime_ = currMin_;
+
+        // Notify timer loop thread to process event
+        emptyQCond_.notify_one();
+
+        return id;
     }
-
-    waitTime_ = currMin_;
-
-    // Notify timer loop thread to process event
-    emptyQCond_.notify_one();
-
-    return event->id_;
 }
 
 int
@@ -209,37 +206,34 @@ AsyncTimerQueue::timerLoop() {
                 auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::system_clock::now() - startTime_).count();
 
+                // Find extra time which has to be spent sleeping
                 waitTime_ = currMin_ - diff;
 
                 if (waitTime_ > 0) {
-                    continue;
-                } else {
-                    // Reset fallThrough_
-                    fallThrough_ = false;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(waitTime_));
                 }
+                // Reset fallThrough_
+                fallThrough_ = false;
             }
 
-            auto currTime = std::chrono::system_clock::now();
-
             auto elapsedTime = \
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                currTime - startTime_).count();
+                std::chrono::duration_cast<std::chrono::milliseconds>(                std::chrono::system_clock::now() - startTime_).count();
 
             // Trigger all events in event chain
             for (auto iter = eventMap_[currMin_].begin() ;
                  iter != eventMap_[currMin_].end() ;) {
 
-                std::thread((*iter)->eventHandler_).detach();
+                std::thread((*iter).eventHandler_).detach();
 
                 // If event has to be run once then delete
                 // from vector else increment nextRun_ which
                 // will be compared below to get next event
                 // to be run
-                if (!(*iter)->repeat_) {
+                if (!(*iter).repeat_) {
                     iter = eventMap_[currMin_].erase(iter);
                     continue;
                 } else {
-                    (*iter)->nextRun_ = elapsedTime + (*iter)->timeout_;
+                    (*iter).nextRun_ = elapsedTime + (*iter).timeout_;
                 }
                 ++iter;
             }
@@ -253,12 +247,12 @@ AsyncTimerQueue::timerLoop() {
             auto elem = std::min_element(eventMap_.begin(),
                                          eventMap_.end(),
                                          CompareNextRun());
-            waitTime_ = (*elem).second[0]->nextRun_ - elapsedTime;
+            waitTime_ = (*elem).second[0].nextRun_ - elapsedTime;
             if (waitTime_ < 0) {
                 waitTime_ = 0;
             }
             // Next event chain to be run
-            currMin_ = (*elem).second[0]->timeout_;
+            currMin_ = (*elem).second[0].timeout_;
         }
     }
 }
@@ -266,13 +260,25 @@ AsyncTimerQueue::timerLoop() {
 inline int
 AsyncTimerQueue::cancel(int id) {
     std::unique_lock<std::mutex> lock(eventQMutex_);
-    auto event = std::find_if(eventMap_.begin(),
-                              eventMap_.end(),
-                              [&](EventMapPair e1) { return e1.first == id; });
 
-    if (event != eventMap_.end()) {
-        eventMap_.erase((*event).first);
-        return 0;
+    for (auto & pair : eventMap_) {
+        // Search for event with matching id in current pair
+        auto event = std::find_if(pair.second.begin(),
+                                  pair.second.end(),
+                                  [=] (Event & e) { return e.id_ == id; });
+
+        // If found erase event from vector
+        if (event != pair.second.end()) {
+            eventMap_[pair.first].erase(event);
+            std::cout << "Event with id " << id << " deleted succesfully\n";
+
+            // Delete key if value is empty
+            if (eventMap_[pair.first].empty()) {
+                eventMap_.erase(pair.first);
+            }
+
+            return 0;
+        }
     }
 
     return -1;
