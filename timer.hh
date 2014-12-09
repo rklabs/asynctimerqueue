@@ -104,8 +104,6 @@ struct CompareTimeout
     }
 };
 
-
-typedef std::pair<int, std::vector<Event>> EventMapPair;
 struct CompareNextRun
 {
     bool operator()(const EventMapPair & left,
