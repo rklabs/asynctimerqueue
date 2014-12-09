@@ -42,11 +42,11 @@ int main()
 
 
     if (asyncTimerObj.cancel(eventId1) == -1) {
-        std::cout << "failed to cancel id" << std::endl;
+        std::cout << "Failed to cancel id" << std::endl;
     }
 
-    if (asyncTimerObj.cancel(eventId2, 3000) == -1) {
-        std::cout << "failed to cancel id" << std::endl;
+    if (asyncTimerObj.cancel(eventId2 + 20, 3000) == -1) {
+        std::cout << "Failed to cancel id" << std::endl;
     }
 
     asyncthread.join();

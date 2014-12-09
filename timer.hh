@@ -305,20 +305,25 @@ inline int
 AsyncTimerQueue::cancel(int id, int timeout) {
     std::unique_lock<std::mutex> lock(eventQMutex_);
 
-    auto event = eventMap_.find(timeout);
+    auto eventPair = eventMap_.find(timeout);
 
-    if (event != eventMap_.end()) {
+    if (eventPair != eventMap_.end()) {
         auto eventVector = eventMap_[timeout];
-        eventVector.erase(std::find_if(eventVector.begin(),
-                                       eventVector.end(),
-                                       [=] (Event & e) { return e.id_ == id; }));
+        auto event = std::find_if(eventVector.begin(),
+                                  eventVector.end(),
+                                  [=] (Event & e) { return e.id_ == id; });
 
-        std::cout << "Event with id " << id << " deleted succesfully\n";
+        if (event != eventVector.end()) {
+            eventVector.erase(event);
 
-        if (eventVector.empty()) {
-            eventMap_.erase(timeout);
+            std::cout << "Event with id " << id << " deleted succesfully\n";
+
+            if (eventVector.empty()) {
+                eventMap_.erase(timeout);
+            }
+
+            return 0;
         }
-        return 0;
     }
 
     return -1;
