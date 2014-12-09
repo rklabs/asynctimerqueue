@@ -228,8 +228,8 @@ AsyncTimerQueue::timerLoop() {
                 fallThrough_ = false;
             }
 
-            auto elapsedTime = \
-                std::chrono::duration_cast<std::chrono::milliseconds>(                std::chrono::system_clock::now() - startTime_).count();
+            auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now() - startTime_).count();
 
             // Trigger all events in event chain
             for (auto iter = eventMap_[currMin_].begin() ;
