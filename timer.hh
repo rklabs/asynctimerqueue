@@ -18,17 +18,11 @@
 #pragma once
 
 #include <iostream>
-#include <ctime>
-#include <cstdlib>
 #include <thread>
 #include <chrono>
-#include <future>
-#include <deque>
 #include <algorithm>  // std::find_if, std::min_element
-#include <functional>
 #include <mutex>
 #include <condition_variable>
-#include <memory>
 #include <unordered_map>
 
 namespace Timer {
@@ -38,7 +32,7 @@ typedef std::function<void ()> voidFunc;
 struct Event {
     int id_;       // unique id for each event object
     int timeout_;  // in millisec
-    int nextRun_;
+    uint64_t nextRun_;
     bool repeat_;  // repeat event indefinitely if true
     // event handler callback
     voidFunc eventHandler_;
@@ -98,8 +92,7 @@ typedef std::pair<int, std::vector<Event>> EventMapPair;
 struct CompareTimeout
 {
     bool operator()(const EventMapPair & left,
-                    const EventMapPair & right) const
-    {
+                    const EventMapPair & right) const {
         return left.second[0].timeout_ < right.second[0].timeout_;
     }
 };
@@ -107,8 +100,7 @@ struct CompareTimeout
 struct CompareNextRun
 {
     bool operator()(const EventMapPair & left,
-                    const EventMapPair & right) const
-    {
+                    const EventMapPair & right) const {
         return left.second[0].nextRun_ < right.second[0].nextRun_;
     }
 };
@@ -203,10 +195,10 @@ AsyncTimerQueue::timerLoop() {
             // already been started. Looks like notify doesn't
             // reach the thread. Is this bug in STL ?
             eventQCond_.wait_until(lock,
-                                    std::chrono::system_clock::now() +
-                                    std::chrono::milliseconds(waitTime_),
-                                    [this] { return this->stopThread_ ||
-                                             this->fallThrough_; });
+                                   std::chrono::system_clock::now() +
+                                   std::chrono::milliseconds(waitTime_),
+                                   [this] { return this->stopThread_ ||
+                                            this->fallThrough_; });
 
             // Enough time may not have been spent in case of
             // fall through. So calculate diff and wait for
@@ -245,7 +237,6 @@ AsyncTimerQueue::timerLoop() {
                     iter = eventVector.erase(iter);
                     continue;
                 } else {
-                    // XXX overflow
                     (*iter).nextRun_ = elapsedTime + (*iter).timeout_;
                 }
                 ++iter;
@@ -262,6 +253,7 @@ AsyncTimerQueue::timerLoop() {
                                          CompareNextRun());
             waitTime_ = (*elem).second[0].nextRun_ - elapsedTime;
             if (waitTime_ < 0) {
+                std::cout << "Event delayed : " << waitTime_ << "(msec)" << std::endl;
                 waitTime_ = 0;
             }
             // Next event chain to be run

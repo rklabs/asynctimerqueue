@@ -38,7 +38,7 @@ int main()
 
     int eventId1 = asyncTimerObj.create(5000, true, &handler1);
     int eventId2 = asyncTimerObj.create(3000, true, &handler2);
-    int eventId3 = asyncTimerObj.create(1000, true, &foo::handler3, &f);
+    int eventId3 = asyncTimerObj.create(6000, false, &foo::handler3, &f);
 
 
     if (asyncTimerObj.cancel(eventId1) == -1) {
