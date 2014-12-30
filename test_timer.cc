@@ -1,4 +1,4 @@
-#include "timer.hh"
+#include "asynctimerqueue.hh"
 
 auto start = std::chrono::system_clock::now();
 
@@ -26,7 +26,7 @@ class foo {
     }
 };
 
-#define asyncTimerObj Timer::AsyncTimerQueue::getAsyncTimerQueue()
+#define asyncTimerObj Timer::AsyncTimerQueue::getAsyncTimerQueueInstance()
 
 int main()
 {
@@ -40,12 +40,13 @@ int main()
     int eventId2 = asyncTimerObj.create(3000, true, &handler2);
     int eventId3 = asyncTimerObj.create(6000, false, &foo::handler3, &f);
 
+    std::this_thread::sleep_for(std::chrono::seconds(10));
 
     if (asyncTimerObj.cancel(eventId1) == -1) {
         std::cout << "Failed to cancel id" << std::endl;
     }
 
-    if (asyncTimerObj.cancel(eventId2 + 20, 3000) == -1) {
+    if (asyncTimerObj.cancel(eventId2, 3000) == -1) {
         std::cout << "Failed to cancel id" << std::endl;
     }
 

@@ -18,14 +18,15 @@ Event handler signature should be as follows 'void func(type1 arg1, type2, arg2,
         }
     };
 
+    dd
     std::thread asyncthread(&Timer::AsyncTimerQueue::timerLoop,
-                            &Timer::AsyncTimerQueue::getAsyncTimer());
+                            &Timer::AsyncTimerQueue::getAsyncTimerInstance());
 
     foo f;
 
-    int eventId1 = Timer::AsyncTimerQueue::getAsyncTimer().create(1000, true, &handler1);
-    int eventId2 = Timer::AsyncTimerQueue::getAsyncTimer().create(2000, true, &handler2);
-    int eventId3 = Timer::AsyncTimerQueue::getAsyncTimer().create(4000, true, &foo::handler3, &f);
+    int eventId1 = Timer::AsyncTimerQueue::getAsyncTimerInstance().create(1000, true, &handler1);
+    int eventId2 = Timer::AsyncTimerQueue::getAsyncTimerInstance().create(2000, true, &handler2);
+    int eventId3 = Timer::AsyncTimerQueue::getAsyncTimerInstance().create(4000, true, &foo::handler3, &f);
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
