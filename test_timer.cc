@@ -26,7 +26,7 @@ class foo {
     }
 };
 
-#define asyncTimerObj Timer::AsyncTimerQueue::getAsyncTimerQueueInstance()
+#define asyncTimerObj Timer::AsyncTimerQueue::Instance()
 
 int main()
 {

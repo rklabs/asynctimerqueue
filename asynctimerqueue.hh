@@ -60,7 +60,7 @@ class AsyncTimerQueue {
     int cancel(int id);
     int cancel(int id, int timeout);
 
-    static AsyncTimerQueue & getAsyncTimerQueueInstance();
+    static AsyncTimerQueue & Instance();
     int timerLoop();
     void shutdown();
 
@@ -325,7 +325,7 @@ AsyncTimerQueue::cancel(int id, int timeout) {
 }
 
 inline AsyncTimerQueue &
-AsyncTimerQueue::getAsyncTimerQueueInstance() {
+AsyncTimerQueue::Instance() {
     static AsyncTimerQueue asyncTimer;
     return asyncTimer;
 }
