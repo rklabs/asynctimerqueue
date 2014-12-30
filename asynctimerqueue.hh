@@ -281,7 +281,7 @@ AsyncTimerQueue::cancel(int id) {
         if (event != eventVector.end()) {
             // Erase event from vector
             eventVector.erase(event);
-            
+
             std::cout << "Event with id " << id << " deleted succesfully\n";
 
             // Delete map entry if vector is empty
@@ -339,9 +339,7 @@ AsyncTimerQueue::shutdown() {
 
 AsyncTimerQueue::~AsyncTimerQueue() {
     if (!stopThread_) {
-        stopThread_ = true;
-        eventQCond_.notify_all();
-        emptyQCond_.notify_all();
+        shutdown();
     }
 }
 
