@@ -18,7 +18,6 @@ Event handler signature should be as follows 'void func(type1 arg1, type2, arg2,
         }
     };
 
-    dd
     std::thread asyncthread(&Timer::AsyncTimerQueue::timerLoop,
                             &Timer::AsyncTimerQueue::Instance());
 
