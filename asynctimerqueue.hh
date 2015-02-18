@@ -179,7 +179,7 @@ AsyncTimerQueue::timerLoop() {
         }
 
         if (stopThread_) {
-            std::cout << "Timer loop has been stopped";
+            std::cout << "Timer loop has been stopped\n";
             return 0;
         }
 

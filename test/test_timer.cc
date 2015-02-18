@@ -50,6 +50,12 @@ int main()
         std::cout << "Failed to cancel id" << std::endl;
     }
 
+    if (asyncTimerObj.cancel(eventId3) == -1) {
+            std::cout << "Failed to cancel id" << std::endl;
+    }
+
+    asyncTimerObj.shutdown();
+
     asyncthread.join();
 
     return 0;

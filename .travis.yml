@@ -9,7 +9,7 @@ before_install:
 install:
   - sudo apt-get install -qq gcc-4.8 g++-4.8
   - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 90
-  - cd test && g++ -std=c++11 -Wall test_timer.cc -o test_timer
+  - cd test && g++ -std=c++11 -Wall test_timer.cc -o test_timer -lpthread -Wl,--no-as-needed
 
 script:
   - ./runtest.sh
