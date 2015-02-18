@@ -1,1 +1,1 @@
-./timer_test
+./test_timer
