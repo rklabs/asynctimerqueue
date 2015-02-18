@@ -115,7 +115,6 @@ AsyncTimerQueue::AsyncTimerQueue() : stopThread_(false),
 template<class F, class... Args>
 int
 AsyncTimerQueue::create(int timeout, bool repeat, F&& f, Args&&... args) {
-
     int prevMinTimeout;
 
     // Define generic funtion with any number / type of args
