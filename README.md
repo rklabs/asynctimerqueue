@@ -3,6 +3,8 @@ AsyncTimer
 
 Asynchronous timer queue mechanism(C++11)
 
+[![Build Status](https://travis-ci.org/rklabs/AsyncTimerQueue.svg?branch=master)](https://travis-ci.org/rklabs/AsyncTimerQueue)
+
 This is an implementation of asynchronous timer queue. Callbacks can be registered
 to be run in future. Time has to be specified in millisec. An "event" can be created 
 to run once or repeatedly. AsyncTimerQueue class has been implemented as singleton. 
